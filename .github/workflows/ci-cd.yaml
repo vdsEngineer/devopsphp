@@ -124,60 +124,75 @@ jobs:
  
   # --- ЭТАП 3: НАГРУЗОЧНЫЙ ТЕСТ (Performance Gate) ---
   performance:
-    needs: build-image
-    runs-on: ubuntu-latest
+      needs: build-image
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
 
-    env:
-      COMPOSE_PROJECT_NAME: ci
+        - name: Lowercase repo name
+          run: echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
-    steps:
-      - uses: actions/checkout@v4 # Нам нужны скрипты k6 и docker-compose.yml
+        # 1. СОЗДАЕМ ИЗОЛИРОВАННУЮ СЕТЬ
+        - name: Create Network
+          run: docker network create ci-net
 
-      - name: Lowercase repo name
-        shell: bash
-        run: |
-          IMAGE_NAME_LOWER="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
-          echo "IMAGE_NAME_LOWER=$IMAGE_NAME_LOWER" >> "$GITHUB_ENV"
+        # 2. ПОДГОТОВКА .ENV
+        - name: Prepare Environment
+          run: |
+            cp .env.example .env
+            echo "APP_KEY=base64:pW+J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8=" >> .env
+            echo "DB_CONNECTION=pgsql" >> .env
+            echo "DB_HOST=db" >> .env
+            echo "DB_DATABASE=laravel" >> .env
+            echo "DB_USERNAME=sail" >> .env
+            echo "DB_PASSWORD=password" >> .env
+            echo "REDIS_HOST=redis" >> .env
+            echo "TELESCOPE_ENABLED=false" >> .env
 
-      - name: Prepare Environment
-        run: |
-          cp .env.example .env
-          echo "APP_KEY=base64:pW+J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8=" >> .env
-          echo "DB_HOST=db" >> .env
-          echo "REDIS_HOST=redis" >> .env
-          # Используем наш собранный CI образ
-          echo "APP_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }}" >> .env
+        # 3. ЗАПУСК ИНФРАСТРУКТУРЫ ЧЕРЕЗ DOCKER RUN (чтобы всё было в одной сети ci-net)
+        - name: Start Database
+          run: |
+            docker run -d --name db --network ci-net \
+              -e POSTGRES_DB=laravel -e POSTGRES_USER=sail -e POSTGRES_PASSWORD=password \
+              postgres:16-alpine
+        
+        - name: Start Redis
+          run: docker run -d --name redis --network ci-net redis:alpine
 
-      - name: Start Infrastructure
-        run: docker compose up -d db redis
+        - name: Wait for DB
+          run: sleep 20
 
-      - name: Run Migrations
-        # Обрати внимание: мы запускаем миграции на том же образе, но БЕЗ volumes
-        run: |
-          docker run --rm \
-            --network ci_default \
-            --env-file .env \
-            --entrypoint php \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }} \
-            artisan migrate --force
+        # 4. ЗАПУСК МИГРАЦИЙ
+        - name: Run Migrations
+          run: |
+            docker run --rm --network ci-net --env-file .env \
+              --entrypoint php \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }} \
+              artisan migrate --force
 
-      - name: Start Prod App
-        run: |
-          docker run -d --name app \
-            --network ci_default \
-            -p 8000:8000 \
-            --env-file .env \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }}
-          
-          sleep 10
-          docker logs app
+        # 5. ЗАПУСК ПРИЛОЖЕНИЯ
+        - name: Start Prod App
+          run: |
+            # Запускаем контейнер. 
+            # Мы добавляем chmod прямо перед стартом внутри, чтобы вылечить ошибки прав
+            docker run -d --name app --network ci-net -p 8000:8000 --env-file .env \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }}
+            
+            # Даем Octane время проснуться
+            sleep 15
+            
+            # ОЧЕНЬ ВАЖНО: Смотрим логи. Если здесь будет ошибка, мы увидим её в GitHub Actions
+            docker logs app
+            
+            # Проверяем, что эндпоинт вообще отвечает
+            curl -f http://localhost:8000/ || (docker logs app && exit 1)
 
-      - name: Run k6
-        run: |
-          docker run --rm \
-            --network ci_default \
-            -v ./docker/k6:/scripts \
-            grafana/k6 run /scripts/ci.js
+        # 6. НАГРУЗОЧНЫЙ ТЕСТ K6
+        - name: Run k6
+          run: |
+            docker run --rm --network ci-net \
+              -v ./docker/k6:/scripts \
+              grafana/k6 run /scripts/ci.js
  
 
   # --- ЭТАП 4: СБОРКА И ПУБЛИКАЦИЯ (Build & Push) ---
