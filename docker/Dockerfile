@@ -54,9 +54,20 @@ RUN composer install --no-dev --no-scripts --prefer-dist
 COPY . .
 RUN npm ci && npm run build
 
-# Вместо 777 даем права пользователю 1000
-RUN mkdir -p /data/caddy /config/caddy && \
-    chown -R 1000:1000 /app /data /config /usr/local/bin/frankenphp
+# --- КРИТИЧЕСКИЙ БЛОК ПРАВ ---
+USER root
+
+RUN chown 1000:1000 /usr/local/bin /usr/local/bin/frankenphp
+
+# 1. Создаем симлинк в корне /app. 
+RUN ln -sf /usr/local/bin/frankenphp /app/frankenphp
+
+# 2. Создаем папки Caddy (они нужны для работы сервера)
+RUN mkdir -p /data/caddy /config/caddy
+
+# 3. Отдаем ПРАВА пользователю 1000 на всё необходимое
+RUN chown -R 1000:1000 /app /data /config /usr/local/bin/frankenphp
+
 
 USER 1000
 ENV FRANKENPHP_BINARY=/usr/local/bin/frankenphp
