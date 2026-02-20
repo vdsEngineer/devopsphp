@@ -80,123 +80,106 @@ jobs:
           DB_PASSWORD: password
           REDIS_HOST: 127.0.0.1
         run: php artisan test
+ 
+  # 2. СБОРКА ПРОД-ОБРАЗА
+  build-image:
+      needs: quality
+      runs-on: ubuntu-latest
+      outputs:
+        image_tag: ${{ steps.meta.outputs.tags }}
+      permissions:
+        contents: read
+        packages: write
+      steps:
+        - uses: actions/checkout@v4
+        
+        - name: Lowercase repo name
+          run: echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
-  # --- ЭТАП 2: НАГРУЗОЧНЫЙ ТЕСТ (Performance Gate) ---
+        - name: Login to GHCR
+          uses: docker/login-action@v3
+          with:
+            registry: ${{ env.REGISTRY }}
+            username: ${{ github.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+
+        - name: Build and Push (Temporary Tag)
+          uses: docker/build-push-action@v5
+          with:
+            context: .
+            file: docker/Dockerfile
+            target: prod 
+            push: true
+            tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }}
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
+ 
+  # --- ЭТАП 3: НАГРУЗОЧНЫЙ ТЕСТ (Performance Gate) ---
   performance:
-    needs: quality # Запускаем только если код качественный
+    needs: build-image
     runs-on: ubuntu-latest
-    
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 # Нам нужны скрипты k6 и docker-compose.yml
 
-      # 1. ДОБАВИТЬ: Устанавливаем PHP, чтобы скачать вендоры
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          extensions: pdo_pgsql, redis, bcmath
+      - name: Lowercase repo name
+        run: echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
-      # 2. ДОБАВИТЬ: Скачиваем библиотеки (создаем папку vendor на хосте)
-      - name: Install Dependencies
-        run: composer install --prefer-dist --no-progress --ignore-platform-reqs
-
-      # 3. Готовим окружение (как локально)
       - name: Prepare Environment
         run: |
-
-          # Разрешаем запись всем во все папки, куда пишет Laravel
-          chmod -R 777 storage bootstrap/cache
-
-          # На всякий случай создаем папку для логов Octane
-          mkdir -p storage/logs
-          chmod -R 777 storage/logs
-
           cp .env.example .env
-          # Генерируем ключ, чтобы приложение могло стартовать
-          sed -i 's/APP_KEY=/APP_KEY=base64:pW+J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8=/' .env
-          
-          # 2. Меняем хост базы данных (находим DB_HOST=... и меняем на DB_HOST=db)
-          sed -i 's/DB_HOST=127.0.0.1/DB_HOST=db/' .env
-          sed -i 's/DB_HOST=localhost/DB_HOST=db/' .env
+          echo "APP_KEY=base64:pW+J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8=" >> .env
+          echo "DB_HOST=db" >> .env
+          echo "REDIS_HOST=redis" >> .env
+          # Используем наш собранный CI образ
+          echo "APP_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }}" >> .env
 
-          # 3. Меняем хост Redis
-          sed -i 's/REDIS_HOST=127.0.0.1/REDIS_HOST=redis/' .env
-          
-          # 4. Добавляем путь к FrankenPHP (если его нет в example)
-          echo "FRANKENPHP_BINARY=/usr/local/bin/frankenphp" >> .env
-          echo "TELESCOPE_ENABLED=false" >> .env
+      - name: Start Infrastructure
+        run: docker compose up -d db redis
 
-          # 5. Принудительно ставим окружение local (для тестов)
-          sed -i 's/APP_ENV=production/APP_ENV=local/' .env || echo "APP_ENV=local" >> .env
-
-
-      - name: Start DB and Redis 
-        run: |
-          docker compose up -d db redis
-          sleep 10 # Ждем, пока база данных и Redis полностью запустятся
-
-      # 5. Накатываем миграции (иначе k6 получит 500 ошибку)
       - name: Run Migrations
-        run: docker compose run --rm app php artisan migrate --force
-
-      - name: App start
+        # Обрати внимание: мы запускаем миграции на том же образе, но БЕЗ volumes
         run: |
+          docker run --rm \
+            --network ${{ github.event.repository.name }}_default \
+            --env-file .env \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }} \
+            php artisan migrate --force
 
-          # Собираем и запускаем в фоне
-          docker compose up -d app
-          
-          # Даем Octane и Базе время проснуться (важно для CI!)
-          sleep 15
-          
-          # Проверяем, что всё живое
-          docker compose ps
-          docker compose logs app
-
-
-
-      # 6. ЗАПУСК K6
-      # Мы используем образ k6, но монтируем наш CI-скрипт
-      # Команда --rm удалит контейнер k6 после теста
-      - name: Run k6 Load Test
+      - name: Start Prod App
         run: |
-          docker compose run --rm k6 run /scripts/ci.js
+          # Запускаем контейнер БЕЗ volumes. Чистый прод.
+          docker run -d --name app \
+            --network ${{ github.event.repository.name }}_default \
+            -p 8000:8000 \
+            --env-file .env \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }}
+          
+          sleep 10
+          docker logs app
+
+      - name: Run k6
+        run: |
+          # Бьем по контейнеру app
+          docker compose run --rm k6 run /scripts/test.js
  
 
-  # --- ЭТАП 3: СБОРКА И ПУБЛИКАЦИЯ (Build & Push) ---
-  build-and-push:
-    needs: performance # Запускаем только если нагрузочный тест прошел!
-    if: github.event_name == 'push' # Только при пуше, не при PR
+  # --- ЭТАП 4: СБОРКА И ПУБЛИКАЦИЯ (Build & Push) ---
+  promote-to-latest:
+    needs: performance
     runs-on: ubuntu-latest
     permissions:
-      contents: read
       packages: write
-
     steps:
-      - uses: actions/checkout@v4
-
-      # 1. Lowercase repository name not important
-      - name: Lowercase repository name
-        shell: bash
-        run: |
-          IMAGE_NAME_LOWER="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
-          echo "IMAGE_NAME_LOWER=$IMAGE_NAME_LOWER" >> "$GITHUB_ENV"
-
-      - uses: docker/setup-buildx-action@v3
-      
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and Push Prod Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/Dockerfile
-          target: prod # <--- ЧИСТЫЙ ПРОД ОБРАЗ
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          
+      - name: Tag and Push Latest
+        run: |
+          IMAGE_ID=${{ env.REGISTRY }}/${{ GITHUB_REPOSITORY,, }}
+          docker pull $IMAGE_ID:ci-${{ github.sha }}
+          docker tag $IMAGE_ID:ci-${{ github.sha }} $IMAGE_ID:latest
+          docker push $IMAGE_ID:latest
