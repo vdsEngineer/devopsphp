@@ -3,13 +3,14 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ "main" ]
-      paths-ignore:
+    paths-ignore:
       - '**.md'           # Любые Markdown файлы (README, CHANGELOG)
       - 'docs/**'         # Папка с документацией (если появится)
       - 'LICENSE'         # Файл лицензии
       - '.gitignore'      # Настройки гита
       - '.editorconfig'   # Настройки IDE
       - '.env.example'    # Пример окружения (обычно не ломает сборку)
+
   pull_request:
     branches: [ "main" ]
     paths-ignore:
@@ -18,6 +19,7 @@ on:
       - 'LICENSE'
       - '.gitignore'
       - '.editorconfig'
+      
 env:
   IMAGE_NAME: ${{ github.repository }}
   REGISTRY: ghcr.io
