@@ -153,8 +153,9 @@ jobs:
           docker run --rm \
             --network ${{ github.event.repository.name }}_default \
             --env-file .env \
+            --entrypoint php \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }} \
-            php artisan migrate --force
+            artisan migrate --force
 
       - name: Start Prod App
         run: |
