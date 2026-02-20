@@ -106,7 +106,7 @@ jobs:
 
           # Разрешаем запись всем во все папки, куда пишет Laravel
           chmod -R 777 storage bootstrap/cache
-          
+
           # На всякий случай создаем папку для логов Octane
           mkdir -p storage/logs
           chmod -R 777 storage/logs
@@ -132,8 +132,11 @@ jobs:
       # 4. Поднимаем стек (App + DB + Redis)
       - name: Start Containers
         run: |
+          docker compose up -d db redis
+          sleep 10 # Ждем, пока база данных и Redis полностью запустятся
+
           # Собираем и запускаем в фоне
-          docker compose up -d app db redis
+          docker compose up -d app
           
           # Даем Octane и Базе время проснуться (важно для CI!)
           sleep 15
