@@ -126,6 +126,10 @@ jobs:
   performance:
     needs: build-image
     runs-on: ubuntu-latest
+
+    env:
+      COMPOSE_PROJECT_NAME: ci
+
     steps:
       - uses: actions/checkout@v4 # Нам нужны скрипты k6 и docker-compose.yml
 
@@ -151,7 +155,7 @@ jobs:
         # Обрати внимание: мы запускаем миграции на том же образе, но БЕЗ volumes
         run: |
           docker run --rm \
-            --network ${{ github.event.repository.name }}_default \
+            --network ci_default \
             --env-file .env \
             --entrypoint php \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }} \
@@ -159,9 +163,8 @@ jobs:
 
       - name: Start Prod App
         run: |
-          # Запускаем контейнер БЕЗ volumes. Чистый прод.
           docker run -d --name app \
-            --network ${{ github.event.repository.name }}_default \
+            --network ci_default \
             -p 8000:8000 \
             --env-file .env \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:ci-${{ github.sha }}
@@ -171,8 +174,10 @@ jobs:
 
       - name: Run k6
         run: |
-          # Бьем по контейнеру app
-          docker compose run --rm k6 run /scripts/test.js
+          docker run --rm \
+            --network ci_default \
+            -v ./docker/k6:/scripts \
+            grafana/k6 run /scripts/ci.js
  
 
   # --- ЭТАП 4: СБОРКА И ПУБЛИКАЦИЯ (Build & Push) ---
