@@ -1,0 +1,45 @@
+includes:
+
+parameters:
+    # Уровень анализа PHPStan (0-9)
+    # 0 - самый мягкий (не анализирует почти ничего)
+    # 9 - самый строгий (анализирует все детали)
+    level: 8
+    
+    # Директории, которые нужно анализировать
+    paths:
+        - app/
+        - config/
+        - database/
+        - resources/
+        - routes/
+        - tests/
+    
+    # Директории, которые нужно исключить из анализа
+    excludePaths:
+        - vendor/
+        - storage/
+        - public/
+        - bootstrap/
+    
+    # Имена классов, которые нужно считать за сущесвующие, даже если PHPStan не найдет их
+    # Например, модели Eloquent или классы из внешних пакетов
+    scanDirectories:
+        - app/
+    
+    # Файлы, которые нужно считать за включенные в анализ, даже если они находятся в исключённых директориях
+    # scanFiles:
+    #     - path/to/file.php
+    
+    # Пространства имен, которые нужно сканировать для автозагрузки классов
+    # scanNamespaces:
+    #     App:
+    #         - app/
+    
+    # Флаги для контроля поведения анализатора
+    reportUnmatchedIgnoredErrors: false
+    treatPhpDocTypesAsCertain: true
+    
+    # Правила, которые нужно отключить
+    # rules:
+    #     - !SomeRule
