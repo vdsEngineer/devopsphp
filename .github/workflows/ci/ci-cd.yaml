@@ -1,0 +1,153 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: ghcr.io
+
+jobs:
+  # --- ЭТАП 1: ПРОВЕРКА КОДА (Static & Unit) ---
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres: # Поднимаем базу для юнит-тестов
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: testing_db
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, redis, bcmath
+      
+      - name: Install Dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Copy .env
+        run: cp .env.example .env
+
+      - name: Generate Key
+        run: php artisan key:generate
+
+      - name: Run Pint (Style)
+        run: ./vendor/bin/pint --test
+
+      - name: Run PHPStan (Static Analysis)
+        run: ./vendor/bin/phpstan analyse --memory-limit=2G
+
+      - name: Run Pest (Unit Tests)
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: testing_db
+          DB_USERNAME: postgres
+          DB_PASSWORD: password
+          REDIS_HOST: 127.0.0.1
+        run: php artisan test
+
+  # --- ЭТАП 2: НАГРУЗОЧНЫЙ ТЕСТ (Performance Gate) ---
+  performance:
+    needs: quality # Запускаем только если код качественный
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Готовим окружение (как локально)
+      - name: Prepare Environment
+        run: |
+          cp .env.example .env
+          # Генерируем ключ, чтобы приложение могло стартовать
+          sed -i 's/APP_KEY=/APP_KEY=base64:pW+J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8=/' .env
+          
+          # 2. Меняем хост базы данных (находим DB_HOST=... и меняем на DB_HOST=db)
+          sed -i 's/DB_HOST=127.0.0.1/DB_HOST=db/' .env
+          sed -i 's/DB_HOST=localhost/DB_HOST=db/' .env
+
+          # 3. Меняем хост Redis
+          sed -i 's/REDIS_HOST=127.0.0.1/REDIS_HOST=redis/' .env
+          
+          # 4. Добавляем путь к FrankenPHP (если его нет в example)
+          echo "FRANKENPHP_BINARY=/usr/local/bin/frankenphp" >> .env
+
+
+          # 5. Принудительно ставим окружение local (для тестов)
+          sed -i 's/APP_ENV=production/APP_ENV=local/' .env || echo "APP_ENV=local" >> .env
+
+      # 2. Поднимаем стек (App + DB + Redis)
+      - name: Start Containers
+        run: |
+          # Собираем и запускаем в фоне
+          docker compose up -d app db redis
+          
+          # Даем Octane и Базе время проснуться (важно для CI!)
+          sleep 15
+          
+          # Проверяем, что всё живое
+          docker compose ps
+          docker compose logs app
+
+      # 3. Накатываем миграции (иначе k6 получит 500 ошибку)
+      - name: Run Migrations
+        run: docker compose exec -T app php artisan migrate --force
+
+      # 4. ЗАПУСК K6
+      # Мы используем образ k6, но монтируем наш CI-скрипт
+      # Команда --rm удалит контейнер k6 после теста
+      - name: Run k6 Load Test
+        run: |
+          docker compose run --rm k6 run /scripts/ci.js
+ 
+
+  # --- ЭТАП 3: СБОРКА И ПУБЛИКАЦИЯ (Build & Push) ---
+  build-and-push:
+    needs: performance # Запускаем только если нагрузочный тест прошел!
+    if: github.event_name == 'push' # Только при пуше, не при PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Prod Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: prod # <--- ЧИСТЫЙ ПРОД ОБРАЗ
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
