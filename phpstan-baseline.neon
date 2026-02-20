@@ -1,0 +1,67 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to an undefined method Illuminate\\Log\\Logger\:\:getHandlers\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Logging/JsonFormatter.php
+
+		-
+			message: '#^Method App\\Providers\\HealthServiceProvider\:\:boot\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Providers/HealthServiceProvider.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Providers/TelescopeServiceProvider.php
+
+		-
+			message: '#^Access to constant ATTR_SSL_CA on an unknown class Pdo\\Mysql\.$#'
+			identifier: class.notFound
+			count: 2
+			path: config/database.php
+
+		-
+			message: '#^Call to an undefined method object\:\:getTable\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: database/migrations/2026_02_13_123146_create_health_tables.php
+
+		-
+			message: '#^Method Illuminate\\Database\\Migrations\\Migration@anonymous/database/migrations/2026_02_13_123146_create_health_tables\.php\:9\:\:up\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: database/migrations/2026_02_13_123146_create_health_tables.php
+
+		-
+			message: '#^Undefined variable\: \$this$#'
+			identifier: variable.undefined
+			count: 1
+			path: routes/console.php
+
+		-
+			message: '#^Call to an undefined method Pest\\PendingCalls\\TestCall\|Pest\\Support\\HigherOrderTapProxy\:\:expect\(\)\.$#'
+			identifier: method.notFound
+			count: 3
+			path: tests/Architectural/ArchTest.php
+
+		-
+			message: '#^Function something\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: tests/Pest.php
+
+		-
+			message: '#^Undefined variable\: \$this$#'
+			identifier: variable.undefined
+			count: 1
+			path: tests/Pest.php
+
+		-
+			message: '#^Call to method PHPUnit\\Framework\\Assert\:\:assertTrue\(\) with true will always evaluate to true\.$#'
+			identifier: method.alreadyNarrowedType
+			count: 1
+			path: tests/Unit/ExampleTest.php

@@ -1,5 +1,5 @@
 includes:
-
+    - phpstan-baseline.neon
 parameters:
     # Уровень анализа PHPStan (0-9)
     # 0 - самый мягкий (не анализирует почти ничего)
