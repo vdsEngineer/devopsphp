@@ -124,16 +124,23 @@ jobs:
           
           # 4. Добавляем путь к FrankenPHP (если его нет в example)
           echo "FRANKENPHP_BINARY=/usr/local/bin/frankenphp" >> .env
-
+          echo "TELESCOPE_ENABLED=false" >> .env
 
           # 5. Принудительно ставим окружение local (для тестов)
           sed -i 's/APP_ENV=production/APP_ENV=local/' .env || echo "APP_ENV=local" >> .env
 
-      # 4. Поднимаем стек (App + DB + Redis)
-      - name: Start Containers
+
+      - name: Start DB and Redis 
         run: |
           docker compose up -d db redis
           sleep 10 # Ждем, пока база данных и Redis полностью запустятся
+
+      # 5. Накатываем миграции (иначе k6 получит 500 ошибку)
+      - name: Run Migrations
+        run: docker compose run --rm app php artisan migrate --force
+
+      - name: App start
+        run: |
 
           # Собираем и запускаем в фоне
           docker compose up -d app
@@ -145,9 +152,7 @@ jobs:
           docker compose ps
           docker compose logs app
 
-      # 5. Накатываем миграции (иначе k6 получит 500 ошибку)
-      - name: Run Migrations
-        run: docker compose exec -T app php artisan migrate --force
+
 
       # 6. ЗАПУСК K6
       # Мы используем образ k6, но монтируем наш CI-скрипт
