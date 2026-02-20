@@ -176,8 +176,10 @@ jobs:
 
       # 1. Lowercase repository name not important
       - name: Lowercase repository name
+        shell: bash
         run: |
-          echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+          IMAGE_NAME_LOWER="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "IMAGE_NAME_LOWER=$IMAGE_NAME_LOWER" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
       
@@ -195,6 +197,6 @@ jobs:
           file: docker/Dockerfile
           target: prod # <--- ЧИСТЫЙ ПРОД ОБРАЗ
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
