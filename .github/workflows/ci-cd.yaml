@@ -98,7 +98,7 @@ jobs:
 
       # 2. ДОБАВИТЬ: Скачиваем библиотеки (создаем папку vendor на хосте)
       - name: Install Dependencies
-        run: composer install --prefer-dist --no-progress --no-dev --ignore-platform-reqs
+        run: composer install --prefer-dist --no-progress --ignore-platform-reqs
 
       # 3. Готовим окружение (как локально)
       - name: Prepare Environment
