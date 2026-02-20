@@ -19,7 +19,7 @@ on:
       - 'LICENSE'
       - '.gitignore'
       - '.editorconfig'
-      
+
 env:
   IMAGE_NAME: ${{ github.repository }}
   REGISTRY: ghcr.io
@@ -89,7 +89,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Готовим окружение (как локально)
+      # 1. ДОБАВИТЬ: Устанавливаем PHP, чтобы скачать вендоры
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, redis, bcmath
+
+      # 2. ДОБАВИТЬ: Скачиваем библиотеки (создаем папку vendor на хосте)
+      - name: Install Dependencies
+        run: composer install --prefer-dist --no-progress --no-dev --ignore-platform-reqs
+
+      # 3. Готовим окружение (как локально)
       - name: Prepare Environment
         run: |
           cp .env.example .env
@@ -110,7 +121,7 @@ jobs:
           # 5. Принудительно ставим окружение local (для тестов)
           sed -i 's/APP_ENV=production/APP_ENV=local/' .env || echo "APP_ENV=local" >> .env
 
-      # 2. Поднимаем стек (App + DB + Redis)
+      # 4. Поднимаем стек (App + DB + Redis)
       - name: Start Containers
         run: |
           # Собираем и запускаем в фоне
@@ -123,11 +134,11 @@ jobs:
           docker compose ps
           docker compose logs app
 
-      # 3. Накатываем миграции (иначе k6 получит 500 ошибку)
+      # 5. Накатываем миграции (иначе k6 получит 500 ошибку)
       - name: Run Migrations
         run: docker compose exec -T app php artisan migrate --force
 
-      # 4. ЗАПУСК K6
+      # 6. ЗАПУСК K6
       # Мы используем образ k6, но монтируем наш CI-скрипт
       # Команда --rm удалит контейнер k6 после теста
       - name: Run k6 Load Test
