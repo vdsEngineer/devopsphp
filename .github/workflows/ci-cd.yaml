@@ -173,6 +173,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # 1. Lowercase repository name not important
+      - name: Lowercase repository name
+        run: |
+          echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+
       - uses: docker/setup-buildx-action@v3
       
       - name: Login to GHCR
