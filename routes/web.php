@@ -23,7 +23,7 @@ Route::get('/queue', function () {
 Route::get('/check-log', function (): string {
     logger()->error('Hi from Laravel!');
 
-    return "Check your logs!";
+    return 'Check your logs!';
 });
 
 Route::get('health', HealthCheckResultsController::class);
