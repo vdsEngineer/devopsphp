@@ -15,12 +15,13 @@ RUN setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/frankenphp && \
 
 WORKDIR /app
 
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
 # --- 2. Dev Stage ---
 FROM base AS dev
 
 RUN install-php-extensions xdebug
 COPY docker/php/xdebug.ini /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 
 USER root
