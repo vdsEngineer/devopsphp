@@ -103,6 +103,14 @@ jobs:
       # 3. Готовим окружение (как локально)
       - name: Prepare Environment
         run: |
+
+          # Разрешаем запись всем во все папки, куда пишет Laravel
+          chmod -R 777 storage bootstrap/cache
+          
+          # На всякий случай создаем папку для логов Octane
+          mkdir -p storage/logs
+          chmod -R 777 storage/logs
+
           cp .env.example .env
           # Генерируем ключ, чтобы приложение могло стартовать
           sed -i 's/APP_KEY=/APP_KEY=base64:pW+J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8J8=/' .env
