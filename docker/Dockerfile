@@ -35,7 +35,6 @@ RUN mkdir -p /data/caddy /config/caddy && \
 USER 1000
 
 ENV FRANKENPHP_BINARY=/usr/local/bin/frankenphp
-# Важно: Octane иногда ищет бинарник в папке проекта, сделаем его видимым
 ENV PATH="/app:${PATH}" 
 
 ENTRYPOINT []
@@ -72,5 +71,4 @@ RUN chown -R 1000:1000 /app /data /config /usr/local/bin/frankenphp
 USER 1000
 ENV FRANKENPHP_BINARY=/usr/local/bin/frankenphp
 
-# Тоже порт 8000, балансировщик снаружи пробросит его на 80 или 443
 ENTRYPOINT ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
