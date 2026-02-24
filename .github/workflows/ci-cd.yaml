@@ -245,6 +245,8 @@ jobs:
                 --name app-devops \
                 --network app-network \
                 --restart always \
+                --cpus="0.4" \
+                --memory="300m" \
                 -p 8000:8000 \
                 -e APP_ENV=production \
                 -e APP_DEBUG=false \
@@ -258,7 +260,10 @@ jobs:
                 -e REDIS_HOST=infra-redis \
                 -e RABBITMQ_HOST=infra-rabbitmq \
                 -e LOG_CHANNEL=stderr \
-                $IMAGE_URL
+                -e OCTANE_WORKERS=1 \
+                -e OCTANE_TASK_WORKERS=1 \
+                $IMAGE_URL \
+                php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --workers=1 --max-requests=500
 
               # 5. Запускаем WORKER (Очереди)
               docker stop worker-devops || true
@@ -268,19 +273,23 @@ jobs:
                 --name worker-devops \
                 --network app-network \
                 --restart always \
+                --cpus="0.2" \
+                --memory="150m" \
                 -e APP_ENV=production \
                 -e APP_KEY=${{ secrets.APP_KEY }} \
                 -e DB_CONNECTION=pgsql \
                 -e DB_HOST=infra-db \
-                -e DB_DATABASE=laravel \
-                -e DB_USERNAME=sail \
+                -e DB_DATABASE=${{ secrets.DB_DATABASE }} \
+                -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
                 -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
                 -e REDIS_HOST=infra-redis \
                 -e RABBITMQ_HOST=infra-rabbitmq \
                 -e QUEUE_CONNECTION=rabbitmq \
                 -e LOG_CHANNEL=stderr \
+                -e OCTANE_WORKERS=1 \
+                -e OCTANE_TASK_WORKERS=1 \
                 $IMAGE_URL \
-                php artisan queue:work --tries=4 --timeout=90
+                php artisan queue:work --tries=1 --timeout=90  --memory=128
 
               # 6. Чистим старые образы (чтобы не забить диск)
               docker image prune -f
