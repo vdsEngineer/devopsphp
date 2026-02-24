@@ -54,7 +54,7 @@ RUN composer install --no-dev --no-scripts --prefer-dist
 RUN npm ci && npm run build
 
 # Копируем конфиг Supervisor
-COPY docker/supervisord.conf /etc/supervisord.conf
+COPY docker/supervisord/supervisord.conf /etc/supervisord.conf
 
 COPY . .
 
