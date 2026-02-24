@@ -44,7 +44,7 @@ CMD php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --ad
 # --- 3. Prod Stage ---
 FROM base AS prod
 
-COPY docker/php/php.ini /usr/local/etc/php/conf.d/app.ini
+COPY docker/php/php-prod.ini /usr/local/etc/php/conf.d/app.ini
 
 # Ставим зависимости
 COPY composer.json composer.lock ./
