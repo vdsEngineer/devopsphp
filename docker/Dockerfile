@@ -71,4 +71,4 @@ RUN chown -R 1000:1000 /app /data /config /usr/local/bin/frankenphp
 USER 1000
 ENV FRANKENPHP_BINARY=/usr/local/bin/frankenphp
 
-ENTRYPOINT ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
+CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
