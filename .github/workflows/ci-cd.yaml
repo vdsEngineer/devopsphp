@@ -216,3 +216,71 @@ jobs:
           docker pull $IMAGE_ID:ci-${{ github.sha }}
           docker tag $IMAGE_ID:ci-${{ github.sha }} $IMAGE_ID:latest
           docker push $IMAGE_ID:latest
+  # --- ЭТАП 5: ДЕПЛОЙ НА СЕРВЕР ---
+  deploy:
+      needs: promote-to-latest # Ждем, пока образ получит тег latest
+      runs-on: ubuntu-latest
+      steps:
+        - name: Deploy to Server
+          uses: appleboy/ssh-action@master
+          with:
+            host: ${{ secrets.SSH_HOST }}
+            username: ${{ secrets.SSH_USER }}
+            key: ${{ secrets.SSH_PRIVATE_KEY }}
+            script: |
+              # 1. Логинимся в реестр GitHub
+              echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+              
+              # 2. Скачиваем свежий образ
+              REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+              IMAGE_URL="ghcr.io/$REPO_LOWER:latest"
+              
+              docker pull $IMAGE_URL
+              
+              # 3. Останавливаем старый контейнер (если есть)
+              docker stop app-devops || true
+              docker rm app-devops || true
+              
+              docker run -d \
+                --name app-devops \
+                --network app-network \
+                --restart always \
+                -p 8000:8000 \
+                -e APP_ENV=production \
+                -e APP_DEBUG=false \
+                -e APP_KEY=${{ secrets.APP_KEY }} \
+                -e DB_CONNECTION=pgsql \
+                -e DB_HOST=infra-db \
+                -e DB_PORT=5432 \
+                -e DB_DATABASE=${{ secrets.DB_DATABASE }} \
+                -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+                -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+                -e REDIS_HOST=infra-redis \
+                -e RABBITMQ_HOST=infra-rabbitmq \
+                -e LOG_CHANNEL=stderr \
+                $IMAGE_URL
+
+              # 5. Запускаем WORKER (Очереди)
+              docker stop worker-devops || true
+              docker rm worker-devops || true
+              
+              docker run -d \
+                --name worker-devops \
+                --network app-network \
+                --restart always \
+                -e APP_ENV=production \
+                -e APP_KEY=${{ secrets.APP_KEY }} \
+                -e DB_CONNECTION=pgsql \
+                -e DB_HOST=infra-db \
+                -e DB_DATABASE=laravel \
+                -e DB_USERNAME=sail \
+                -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+                -e REDIS_HOST=infra-redis \
+                -e RABBITMQ_HOST=infra-rabbitmq \
+                -e QUEUE_CONNECTION=rabbitmq \
+                -e LOG_CHANNEL=stderr \
+                $IMAGE_URL \
+                php artisan queue:work --tries=4 --timeout=90
+
+              # 6. Чистим старые образы (чтобы не забить диск)
+              docker image prune -f
