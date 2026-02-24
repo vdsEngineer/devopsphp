@@ -1,6 +1,9 @@
 # --- 1. Base Stage ---
 FROM dunglas/frankenphp:latest-php8.3-alpine AS base
 
+RUN addgroup -g 1000 laravel && \
+    adduser -G laravel -u 1000 -D laravel
+
 RUN apk add --no-cache \
     bash git nodejs npm linux-headers \
     gcompat libc6-compat libcap supervisor\
@@ -62,16 +65,9 @@ USER root
 
 RUN chown 1000:1000 /usr/local/bin /usr/local/bin/frankenphp
 
-# 1. Создаем симлинк в корне /app. 
-RUN ln -sf /usr/local/bin/frankenphp /app/frankenphp
+RUN ln -sf /usr/local/bin/frankenphp /app/frankenphp && \
+    mkdir -p /data/caddy /config/caddy && \
+    chown -R laravel:laravel /app /data /config /usr/local/bin/frankenphp
 
-# 2. Создаем папки Caddy (они нужны для работы сервера)
-RUN mkdir -p /data/caddy /config/caddy
-
-# 3. Отдаем ПРАВА пользователю 1000 на всё необходимое
-RUN chown -R 1000:1000 /app /data /config /usr/local/bin/frankenphp
-
-
-ENV FRANKENPHP_BINARY=/usr/local/bin/frankenphp
-
+ENTRYPOINT []
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
