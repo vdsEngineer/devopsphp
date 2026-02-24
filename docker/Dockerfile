@@ -59,7 +59,7 @@ COPY docker/supervisord/supervisord.conf /etc/supervisord.conf
 COPY . .
 
 # Ставим зависимости и собираем проект
-RUN npm ci && npm run build
+RUN npm i && npm run build
 
 USER root
 
