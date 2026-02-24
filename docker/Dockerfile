@@ -44,6 +44,14 @@ ENTRYPOINT []
 # Порт 8000 для стабильности под не-root
 CMD php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --admin-port=2019 --watch
 
+
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
 # --- 3. Prod Stage ---
 FROM base AS prod
 
@@ -59,7 +67,7 @@ COPY docker/supervisord/supervisord.conf /etc/supervisord.conf
 COPY . .
 
 # Ставим зависимости и собираем проект
-RUN npm i && npm run build
+COPY --from=frontend-builder /app/public/build ./public/build
 
 USER root
 
