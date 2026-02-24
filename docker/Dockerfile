@@ -50,9 +50,6 @@ COPY docker/php/php-prod.ini /usr/local/etc/php/conf.d/app.ini
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-scripts --prefer-dist
 
-# Ставим зависимости и собираем проект
-RUN npm ci && npm run build
-
 # Копируем конфиг Supervisor
 COPY docker/supervisord/supervisord.conf /etc/supervisord.conf
 
