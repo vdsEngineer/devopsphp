@@ -245,8 +245,8 @@ jobs:
                 --name app-devops \
                 --network app-network \
                 --restart always \
-                --cpus="0.4" \
-                --memory="300m" \
+                --cpus="0.6" \
+                --memory="450m" \
                 -p 8000:8000 \
                 -e APP_ENV=production \
                 -e APP_DEBUG=false \
@@ -262,34 +262,7 @@ jobs:
                 -e LOG_CHANNEL=stderr \
                 -e OCTANE_WORKERS=1 \
                 -e OCTANE_TASK_WORKERS=1 \
-                $IMAGE_URL \
-                php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --workers=1 --task-workers=0 --max-requests=250
-
-              # 5. Запускаем WORKER (Очереди)
-              docker stop worker-devops || true
-              docker rm worker-devops || true
-              
-              docker run -d \
-                --name worker-devops \
-                --network app-network \
-                --restart always \
-                --cpus="0.2" \
-                --memory="150m" \
-                -e APP_ENV=production \
-                -e APP_KEY=${{ secrets.APP_KEY }} \
-                -e DB_CONNECTION=pgsql \
-                -e DB_HOST=infra-db \
-                -e DB_DATABASE=${{ secrets.DB_DATABASE }} \
-                -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
-                -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-                -e REDIS_HOST=infra-redis \
-                -e RABBITMQ_HOST=infra-rabbitmq \
-                -e QUEUE_CONNECTION=rabbitmq \
-                -e LOG_CHANNEL=stderr \
-                -e OCTANE_WORKERS=1 \
-                -e OCTANE_TASK_WORKERS=1 \
-                $IMAGE_URL \
-                php artisan queue:work --tries=1 --timeout=90  --memory=100
-
+                $IMAGE_URL 
+                
               # 6. Чистим старые образы (чтобы не забить диск)
               docker image prune -f

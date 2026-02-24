@@ -3,7 +3,7 @@ FROM dunglas/frankenphp:latest-php8.3-alpine AS base
 
 RUN apk add --no-cache \
     bash git nodejs npm linux-headers \
-    gcompat libc6-compat libcap \
+    gcompat libc6-compat libcap supervisor\
     --repository=https://dl-cdn.alpinelinux.org/alpine/v3.19/main \
     --repository=https://dl-cdn.alpinelinux.org/alpine/v3.19/community
 
@@ -50,10 +50,17 @@ COPY docker/php/php-prod.ini /usr/local/etc/php/conf.d/app.ini
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-scripts --prefer-dist
 
-COPY . .
+# Ставим зависимости и собираем проект
 RUN npm ci && npm run build
 
-# --- КРИТИЧЕСКИЙ БЛОК ПРАВ ---
+# Копируем конфиг Supervisor
+COPY docker/supervisord.conf /etc/supervisord.conf
+
+COPY . .
+
+# Ставим зависимости и собираем проект
+RUN npm ci && npm run build
+
 USER root
 
 RUN chown 1000:1000 /usr/local/bin /usr/local/bin/frankenphp
@@ -68,7 +75,6 @@ RUN mkdir -p /data/caddy /config/caddy
 RUN chown -R 1000:1000 /app /data /config /usr/local/bin/frankenphp
 
 
-USER 1000
 ENV FRANKENPHP_BINARY=/usr/local/bin/frankenphp
 
-CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
